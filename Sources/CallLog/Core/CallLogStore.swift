@@ -67,55 +67,55 @@ enum CallRows {
 
     /// One row, or `nil` for one without an id or date.
     static func call(_ row: SQLiteRow, participants: [Int: [Participant]], handles: [Int: Participant]) -> Call? {
-        guard let key = row.integer(0), let id = row.text(1), let seconds = row.double(2) else { return nil }
-        let duration = max(0, row.double(3) ?? 0)
-        let originated = (row.integer(4) ?? 0) != 0
-        let provider = row.text(8) ?? CallCodes.telephonyProvider
-        var media = CallCodes.media(category: row.integer(6))
-        if media == .unknown { media = CallCodes.media(callType: row.integer(7)) }
-        let address = row.text(9)
+        guard let key = row[0].truncatedInt, let id = row[1].nonEmptyString, let seconds = row[2].double else { return nil }
+        let duration = max(0, row[3].double ?? 0)
+        let originated = (row[4].truncatedInt ?? 0) != 0
+        let provider = row[8].nonEmptyString ?? CallCodes.telephonyProvider
+        var media = CallCodes.media(category: row[6].truncatedInt)
+        if media == .unknown { media = CallCodes.media(callType: row[7].truncatedInt) }
+        let address = row[9].nonEmptyString
         var people = participants[key] ?? []
         if people.isEmpty, let address {
-            people = [Participant(address: address, kind: HandleKind(code: row.integer(11)) ?? .unknown, name: row.text(10))]
+            people = [Participant(address: address, kind: HandleKind(code: row[11].truncatedInt) ?? .unknown, name: row[10].nonEmptyString)]
         }
         return Call(
             id: id,
             date: Date(timeIntervalSinceReferenceDate: seconds),
             duration: duration,
             direction: originated ? .outgoing : .incoming,
-            status: CallCodes.status(duration: duration, originated: originated, answered: (row.integer(5) ?? 0) != 0),
+            status: CallCodes.status(duration: duration, originated: originated, answered: (row[5].truncatedInt ?? 0) != 0),
             media: media,
             service: CallCodes.service(provider: provider),
             provider: provider,
             address: address ?? people.first?.address,
             participants: people,
-            initiator: row.integer(37).flatMap { handles[$0] },
-            read: (row.integer(12) ?? 1) != 0,
-            location: row.text(13),
-            countryCode: row.text(14)?.lowercased(),
-            device: row.text(15),
-            bytesUsed: row.integer(16).flatMap { $0 > 0 ? $0 : nil },
-            trust: TrustScore(code: row.integer(17)),
-            verification: VerificationStatus(code: row.integer(18)),
-            junkConfidence: JunkConfidence(code: row.integer(19)),
-            junkCategory: row.text(20),
-            blockedByExtension: row.text(21),
-            blockedByExtensionName: row.text(22),
-            identityExtension: row.text(23),
-            identityType: IdentityType(code: row.integer(24)),
-            callerID: CallerIDAvailability(code: row.integer(25)),
-            screened: (row.integer(26) ?? 0) != 0,
-            hasMessage: (row.integer(27) ?? 0) != 0,
-            translated: (row.integer(28) ?? 0) != 0,
-            screenSharing: (row.integer(29) ?? 0) != 0,
-            wasEmergency: (row.integer(30) ?? 0) != 0,
-            originatingUI: CallCodes.originatingUI(row.integer(31)),
-            originatingUICode: row.integer(31),
-            disconnectedCause: row.integer(32),
-            filteredOutReason: row.integer(33),
-            conversationID: CallCodes.uuidString(row.blob(34)),
-            participantGroupID: CallCodes.uuidString(row.blob(35)),
-            reminderID: CallCodes.uuidString(row.blob(36))
+            initiator: row[37].truncatedInt.flatMap { handles[$0] },
+            read: (row[12].truncatedInt ?? 1) != 0,
+            location: row[13].nonEmptyString,
+            countryCode: row[14].nonEmptyString?.lowercased(),
+            device: row[15].nonEmptyString,
+            bytesUsed: row[16].truncatedInt.flatMap { $0 > 0 ? $0 : nil },
+            trust: TrustScore(code: row[17].truncatedInt),
+            verification: VerificationStatus(code: row[18].truncatedInt),
+            junkConfidence: JunkConfidence(code: row[19].truncatedInt),
+            junkCategory: row[20].nonEmptyString,
+            blockedByExtension: row[21].nonEmptyString,
+            blockedByExtensionName: row[22].nonEmptyString,
+            identityExtension: row[23].nonEmptyString,
+            identityType: IdentityType(code: row[24].truncatedInt),
+            callerID: CallerIDAvailability(code: row[25].truncatedInt),
+            screened: (row[26].truncatedInt ?? 0) != 0,
+            hasMessage: (row[27].truncatedInt ?? 0) != 0,
+            translated: (row[28].truncatedInt ?? 0) != 0,
+            screenSharing: (row[29].truncatedInt ?? 0) != 0,
+            wasEmergency: (row[30].truncatedInt ?? 0) != 0,
+            originatingUI: CallCodes.originatingUI(row[31].truncatedInt),
+            originatingUICode: row[31].truncatedInt,
+            disconnectedCause: row[32].truncatedInt,
+            filteredOutReason: row[33].truncatedInt,
+            conversationID: CallCodes.uuidString(row[34].data),
+            participantGroupID: CallCodes.uuidString(row[35].data),
+            reminderID: CallCodes.uuidString(row[36].data)
         )
     }
 
@@ -124,8 +124,8 @@ enum CallRows {
         guard !database.columns(of: "ZHANDLE").isEmpty else { return [:] }
         var handles: [Int: Participant] = [:]
         try database.read("SELECT Z_PK, ZVALUE, ZNORMALIZEDVALUE, ZTYPE FROM ZHANDLE") { row in
-            guard let key = row.integer(0), let value = row.text(1) ?? row.text(2) else { return }
-            handles[key] = Participant(address: value, normalized: row.text(2), kind: HandleKind(code: row.integer(3)) ?? .unknown)
+            guard let key = row[0].truncatedInt, let value = row[1].nonEmptyString ?? row[2].nonEmptyString else { return }
+            handles[key] = Participant(address: value, normalized: row[2].nonEmptyString, kind: HandleKind(code: row[3].truncatedInt) ?? .unknown)
         }
         return handles
     }
@@ -139,7 +139,7 @@ enum CallRows {
     static func participants(in database: SQLiteReader, handles: [Int: Participant]) throws(CallLogError) -> [Int: [Participant]] {
         var table: String?
         try database.read("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'Z\\_%REMOTEPARTICIPANTHANDLES' ESCAPE '\\'") { row in
-            table = table ?? row.text(0)
+            table = table ?? row[0].nonEmptyString
         }
         guard let table else { return [:] }
         let columns = database.columns(of: table)
@@ -147,7 +147,7 @@ enum CallRows {
               let handleColumn = columns.first(where: { $0.hasSuffix("REMOTEPARTICIPANTHANDLES") }) else { return [:] }
         var byCall: [Int: [Participant]] = [:]
         try database.read("SELECT \(callColumn), \(handleColumn) FROM \(table) ORDER BY \(handleColumn)") { row in
-            guard let call = row.integer(0), let handle = row.integer(1).flatMap({ handles[$0] }) else { return }
+            guard let call = row[0].truncatedInt, let handle = row[1].truncatedInt.flatMap({ handles[$0] }) else { return }
             byCall[call, default: []].append(handle)
         }
         return byCall

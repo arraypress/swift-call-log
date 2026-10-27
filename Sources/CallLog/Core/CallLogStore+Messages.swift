@@ -43,31 +43,31 @@ enum MessageRows {
         let select = columns.map { present.contains($0) ? $0 : "NULL" }.joined(separator: ", ")
         var messages: [StoredMessage] = []
         try database.read("SELECT \(select) FROM ZSTOREDMESSAGE ORDER BY ZDATECREATED DESC") { row in
-            guard let id = CallCodes.uuidString(row.blob(0)), let seconds = row.double(1) else { return }
-            let file = audioFile(id: id, type: row.text(11), assets: assets)
-            var segments = row.blob(10).map(TranscriptDecoding.segments) ?? []
+            guard let id = CallCodes.uuidString(row[0].data), let seconds = row[1].double else { return }
+            let file = audioFile(id: id, type: row[11].nonEmptyString, assets: assets)
+            var segments = row[10].data.map(TranscriptDecoding.segments) ?? []
             if segments.isEmpty, let sidecar = try? Data(contentsOf: assetFolder(id, assets).appendingPathComponent("\(id).plist")) {
                 segments = TranscriptDecoding.segments(sidecar)
             }
-            let provider = row.text(5)
+            let provider = row[5].nonEmptyString
             messages.append(StoredMessage(
                 id: id,
                 date: Date(timeIntervalSinceReferenceDate: seconds),
-                from: row.text(2),
-                duration: max(0, row.double(3) ?? 0),
-                kind: CallCodes.messageKind(row.integer(4)),
-                typeCode: row.integer(4),
+                from: row[2].nonEmptyString,
+                duration: max(0, row[3].double ?? 0),
+                kind: CallCodes.messageKind(row[4].truncatedInt),
+                typeCode: row[4].truncatedInt,
                 service: CallCodes.service(provider: provider),
                 provider: provider,
-                mailbox: Mailbox(code: row.integer(6)),
-                read: (row.integer(7) ?? 0) != 0,
-                deleted: row.double(8).map { Date(timeIntervalSinceReferenceDate: $0) },
-                transcriptionStatus: TranscriptionStatus(code: row.integer(9)),
+                mailbox: Mailbox(code: row[6].truncatedInt),
+                read: (row[7].truncatedInt ?? 0) != 0,
+                deleted: row[8].double.map { Date(timeIntervalSinceReferenceDate: $0) },
+                transcriptionStatus: TranscriptionStatus(code: row[9].truncatedInt),
                 transcript: TranscriptDecoding.text(segments),
                 segments: segments,
                 file: file?.path,
-                callID: CallCodes.uuidString(row.blob(12)),
-                sensitive: (row.integer(13) ?? 0) != 0
+                callID: CallCodes.uuidString(row[12].data),
+                sensitive: (row[13].truncatedInt ?? 0) != 0
             ))
         }
         return messages

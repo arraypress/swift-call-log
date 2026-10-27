@@ -23,8 +23,8 @@ extension CallLogStore {
         var handles: [Int: (value: String, invitedTo: Int?, originated: Int?)] = [:]
         if !database.columns(of: "ZHANDLE").isEmpty {
             try database.read("SELECT Z_PK, ZVALUE, ZINVITEDCONVERSATIONLINK, ZORIGINATORCONVERSATIONLINK FROM ZHANDLE") { row in
-                guard let key = row.integer(0), let value = row.text(1) else { return }
-                handles[key] = (value, row.integer(2), row.integer(3))
+                guard let key = row[0].truncatedInt, let value = row[1].nonEmptyString else { return }
+                handles[key] = (value, row[2].truncatedInt, row[3].truncatedInt)
             }
         }
         let wanted = ["Z_PK", "ZNAME", "ZCREATIONDATE", "ZEXPIRATIONDATE", "ZDELETIONDATE", "ZDELETEREASON",
@@ -32,17 +32,17 @@ extension CallLogStore {
         let select = wanted.map { present.contains($0) ? $0 : "NULL" }.joined(separator: ", ")
         var links: [FaceTimeLink] = []
         try database.read("SELECT \(select) FROM ZCONVERSATIONLINK ORDER BY ZCREATIONDATE DESC") { row in
-            let key = row.integer(0)
+            let key = row[0].truncatedInt
             links.append(FaceTimeLink(
-                name: row.text(1),
-                created: row.double(2).map { Date(timeIntervalSinceReferenceDate: $0) },
-                expires: row.double(3).map { Date(timeIntervalSinceReferenceDate: $0) },
-                deleted: row.double(4).map { Date(timeIntervalSinceReferenceDate: $0) },
-                deleteReasonCode: row.integer(5),
-                activated: (row.integer(6) ?? 0) != 0,
-                originator: row.integer(7).flatMap { handles[$0]?.value },
+                name: row[1].nonEmptyString,
+                created: row[2].double.map { Date(timeIntervalSinceReferenceDate: $0) },
+                expires: row[3].double.map { Date(timeIntervalSinceReferenceDate: $0) },
+                deleted: row[4].double.map { Date(timeIntervalSinceReferenceDate: $0) },
+                deleteReasonCode: row[5].truncatedInt,
+                activated: (row[6].truncatedInt ?? 0) != 0,
+                originator: row[7].truncatedInt.flatMap { handles[$0]?.value },
                 invited: handles.values.filter { $0.invitedTo == key && key != nil }.map(\.value).sorted(),
-                lifetimeCode: row.integer(8)
+                lifetimeCode: row[8].truncatedInt
             ))
         }
         return links
