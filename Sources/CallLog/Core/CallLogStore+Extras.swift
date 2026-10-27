@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SQLiteReader
 
 extension CallLogStore {
 
@@ -16,13 +17,12 @@ extension CallLogStore {
     ///
     /// The private key column is never selected.
     public func links() throws(CallLogError) -> [FaceTimeLink] {
-        let snapshot = try DatabaseSnapshot(of: locations.links)
-        let database = snapshot.database
+        let database = try SQLiteReader.snapshot(of: locations.links)
         let present = database.columns(of: "ZCONVERSATIONLINK")
         guard !present.isEmpty else { return [] }
         var handles: [Int: (value: String, invitedTo: Int?, originated: Int?)] = [:]
         if !database.columns(of: "ZHANDLE").isEmpty {
-            try database.query("SELECT Z_PK, ZVALUE, ZINVITEDCONVERSATIONLINK, ZORIGINATORCONVERSATIONLINK FROM ZHANDLE") { row in
+            try database.read("SELECT Z_PK, ZVALUE, ZINVITEDCONVERSATIONLINK, ZORIGINATORCONVERSATIONLINK FROM ZHANDLE") { row in
                 guard let key = row.integer(0), let value = row.text(1) else { return }
                 handles[key] = (value, row.integer(2), row.integer(3))
             }
@@ -31,7 +31,7 @@ extension CallLogStore {
                       "ZACTIVATED", "ZORIGINATORHANDLE", "ZLIFETIMETYPE"]
         let select = wanted.map { present.contains($0) ? $0 : "NULL" }.joined(separator: ", ")
         var links: [FaceTimeLink] = []
-        try database.query("SELECT \(select) FROM ZCONVERSATIONLINK ORDER BY ZCREATIONDATE DESC") { row in
+        try database.read("SELECT \(select) FROM ZCONVERSATIONLINK ORDER BY ZCREATIONDATE DESC") { row in
             let key = row.integer(0)
             links.append(FaceTimeLink(
                 name: row.text(1),
@@ -61,7 +61,7 @@ extension CallLogStore {
     /// The agent's preferences file, parsed.
     func blockListPreferences() throws(CallLogError) -> [String: Any] {
         let path = locations.blockList.path
-        switch PermissionCheck.access(path) {
+        switch FileChecks.access(path) {
         case .readable: break
         case .missing: return [:]
         case .refused: throw .needsFullDiskAccess(path)
@@ -70,7 +70,7 @@ extension CallLogStore {
             let data = try Data(contentsOf: locations.blockList)
             return try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] ?? [:]
         } catch {
-            if PermissionCheck.isRefusal(error) { throw .needsFullDiskAccess(path) }
+            if FileChecks.isRefusal(error) { throw .needsFullDiskAccess(path) }
             throw .unreadable(path, reason: error.localizedDescription)
         }
     }

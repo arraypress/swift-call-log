@@ -11,13 +11,13 @@
 //
 
 import Foundation
+import SQLiteReader
 
 extension CallLogStore {
 
     /// Every stored message, newest first — deleted ones included, flagged.
     public func messages() throws(CallLogError) -> [StoredMessage] {
-        let snapshot = try DatabaseSnapshot(of: locations.messages)
-        return try MessageRows.messages(in: snapshot.database, assets: locations.messageAssets)
+        return try MessageRows.messages(in: SQLiteReader.snapshot(of: locations.messages), assets: locations.messageAssets)
     }
 
     /// One message by its id.
@@ -37,12 +37,12 @@ enum MessageRows {
         "ZISREAD", "ZDATEDELETED", "ZTRANSCRIPTIONSTATUS", "ZTRANSCRIPT", "ZFILETYPE", "ZCALLUUID", "ZISSENSITIVE",
     ]
 
-    static func messages(in database: SQLiteDatabase, assets: URL) throws(CallLogError) -> [StoredMessage] {
+    static func messages(in database: SQLiteReader, assets: URL) throws(CallLogError) -> [StoredMessage] {
         let present = database.columns(of: "ZSTOREDMESSAGE")
         guard !present.isEmpty else { throw .unreadable("FaceTimeMessageStore", reason: "no ZSTOREDMESSAGE table") }
         let select = columns.map { present.contains($0) ? $0 : "NULL" }.joined(separator: ", ")
         var messages: [StoredMessage] = []
-        try database.query("SELECT \(select) FROM ZSTOREDMESSAGE ORDER BY ZDATECREATED DESC") { row in
+        try database.read("SELECT \(select) FROM ZSTOREDMESSAGE ORDER BY ZDATECREATED DESC") { row in
             guard let id = CallCodes.uuidString(row.blob(0)), let seconds = row.double(1) else { return }
             let file = audioFile(id: id, type: row.text(11), assets: assets)
             var segments = row.blob(10).map(TranscriptDecoding.segments) ?? []

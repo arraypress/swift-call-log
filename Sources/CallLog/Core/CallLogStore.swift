@@ -6,10 +6,11 @@
 //
 //  The calls, from CallHistory.storedata — the Core Data store callhistoryd
 //  keeps for Phone, FaceTime and every CallKit app. Read from a private copy
-//  (see DatabaseSnapshot); the live store is never opened.
+//  (swift-sqlite-reader's snapshot); the live store is never opened.
 //
 
 import Foundation
+import SQLiteReader
 
 /// A Mac's call history, read-only.
 public struct CallLogStore: Sendable {
@@ -23,8 +24,7 @@ public struct CallLogStore: Sendable {
 
     /// Every call, newest first.
     public func calls() throws(CallLogError) -> [Call] {
-        let snapshot = try DatabaseSnapshot(of: locations.callHistory)
-        return try CallRows.calls(in: snapshot.database)
+        return try CallRows.calls(in: SQLiteReader.snapshot(of: locations.callHistory))
     }
 
     /// One call by its id.
@@ -52,21 +52,21 @@ enum CallRows {
         "ZREMINDERUUID", "ZINITIATOR",
     ]
 
-    static func calls(in database: SQLiteDatabase) throws(CallLogError) -> [Call] {
+    static func calls(in database: SQLiteReader) throws(CallLogError) -> [Call] {
         let present = database.columns(of: "ZCALLRECORD")
         guard !present.isEmpty else { throw .unreadable("CallHistory.storedata", reason: "no ZCALLRECORD table") }
         let handles = try self.handles(in: database)
         let participants = try self.participants(in: database, handles: handles)
         let select = columns.map { present.contains($0) ? $0 : "NULL" }.joined(separator: ", ")
         var calls: [Call] = []
-        try database.query("SELECT \(select) FROM ZCALLRECORD ORDER BY ZDATE DESC") { row in
+        try database.read("SELECT \(select) FROM ZCALLRECORD ORDER BY ZDATE DESC") { row in
             if let call = call(row, participants: participants, handles: handles) { calls.append(call) }
         }
         return calls
     }
 
     /// One row, or `nil` for one without an id or date.
-    static func call(_ row: SQLiteDatabase.Row, participants: [Int: [Participant]], handles: [Int: Participant]) -> Call? {
+    static func call(_ row: SQLiteRow, participants: [Int: [Participant]], handles: [Int: Participant]) -> Call? {
         guard let key = row.integer(0), let id = row.text(1), let seconds = row.double(2) else { return nil }
         let duration = max(0, row.double(3) ?? 0)
         let originated = (row.integer(4) ?? 0) != 0
@@ -120,10 +120,10 @@ enum CallRows {
     }
 
     /// Every ZHANDLE row by its key.
-    static func handles(in database: SQLiteDatabase) throws(CallLogError) -> [Int: Participant] {
+    static func handles(in database: SQLiteReader) throws(CallLogError) -> [Int: Participant] {
         guard !database.columns(of: "ZHANDLE").isEmpty else { return [:] }
         var handles: [Int: Participant] = [:]
-        try database.query("SELECT Z_PK, ZVALUE, ZNORMALIZEDVALUE, ZTYPE FROM ZHANDLE") { row in
+        try database.read("SELECT Z_PK, ZVALUE, ZNORMALIZEDVALUE, ZTYPE FROM ZHANDLE") { row in
             guard let key = row.integer(0), let value = row.text(1) ?? row.text(2) else { return }
             handles[key] = Participant(address: value, normalized: row.text(2), kind: HandleKind(code: row.integer(3)) ?? .unknown)
         }
@@ -136,9 +136,9 @@ enum CallRows {
     /// Z_2REMOTEPARTICIPANTHANDLES with columns Z_2REMOTEPARTICIPANTCALLS and
     /// Z_4REMOTEPARTICIPANTHANDLES today — and the numbers move when the
     /// model gains an entity, so it is found by its suffixes.
-    static func participants(in database: SQLiteDatabase, handles: [Int: Participant]) throws(CallLogError) -> [Int: [Participant]] {
+    static func participants(in database: SQLiteReader, handles: [Int: Participant]) throws(CallLogError) -> [Int: [Participant]] {
         var table: String?
-        try database.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'Z\\_%REMOTEPARTICIPANTHANDLES' ESCAPE '\\'") { row in
+        try database.read("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'Z\\_%REMOTEPARTICIPANTHANDLES' ESCAPE '\\'") { row in
             table = table ?? row.text(0)
         }
         guard let table else { return [:] }
@@ -146,7 +146,7 @@ enum CallRows {
         guard let callColumn = columns.first(where: { $0.hasSuffix("REMOTEPARTICIPANTCALLS") }),
               let handleColumn = columns.first(where: { $0.hasSuffix("REMOTEPARTICIPANTHANDLES") }) else { return [:] }
         var byCall: [Int: [Participant]] = [:]
-        try database.query("SELECT \(callColumn), \(handleColumn) FROM \(table) ORDER BY \(handleColumn)") { row in
+        try database.read("SELECT \(callColumn), \(handleColumn) FROM \(table) ORDER BY \(handleColumn)") { row in
             guard let call = row.integer(0), let handle = row.integer(1).flatMap({ handles[$0] }) else { return }
             byCall[call, default: []].append(handle)
         }

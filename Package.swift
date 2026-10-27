@@ -14,10 +14,15 @@ let package = Package(
     products: [
         .library(name: "CallLog", targets: ["CallLog"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/arraypress/swift-sqlite-reader.git", from: "0.1.0"),
+    ],
     targets: [
         // Synchronous and local: no transport, nothing to await, so the
         // nonisolated-nonsending feature is left off.
-        .target(name: "CallLog"),
+        .target(name: "CallLog", dependencies: [
+            .product(name: "SQLiteReader", package: "swift-sqlite-reader"),
+        ]),
         .testTarget(name: "CallLogTests", dependencies: ["CallLog"]),
     ]
 )

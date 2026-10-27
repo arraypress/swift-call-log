@@ -27,7 +27,7 @@ All four sit behind **Full Disk Access**; a refusal is `CallLogError.needsFullDi
 
 ## Reading safely
 
-Each database and its `-wal`/`-shm` are copied to a private temporary folder, read there, and deleted. The live stores are written through a write-ahead log, and on the Mac this was built on the main CallHistory file had not been checkpointed for eleven weeks — every recent call lived only in the `-wal`, so opening the file alone would have missed them. Columns are looked up before they are selected (a column a macOS release lacks reads as `nil`), and the participant join table is found by suffix, because Core Data names it after entity numbers (`Z_2REMOTEPARTICIPANTHANDLES` today) that move when the model gains an entity.
+Each database and its `-wal`/`-shm` are copied to a private temporary folder, read there, and deleted ([swift-sqlite-reader](https://github.com/arraypress/swift-sqlite-reader)'s snapshot). The live stores are written through a write-ahead log, and on the Mac this was built on the main CallHistory file had not been checkpointed for eleven weeks — every recent call lived only in the `-wal`, so opening the file alone would have missed them. Columns are looked up before they are selected (a column a macOS release lacks reads as `nil`), and the participant join table is found by suffix, because Core Data names it after entity numbers (`Z_2REMOTEPARTICIPANTHANDLES` today) that move when the model gains an entity.
 
 ## The codes (measured on macOS 27.0.1)
 
